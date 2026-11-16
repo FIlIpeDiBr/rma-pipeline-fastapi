@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# Node
+node_modules/
+
+# Ambiente e segredos — NUNCA commitar
+.env
+*.env
+!.env.example
+dados infra*.txt
+
+# Build/artefatos
+backend/app/static/
+frontend/dist/
+*.docx
+*.log
+
+# Vite temp
+*.timestamp-*.mjs

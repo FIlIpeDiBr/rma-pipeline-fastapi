@@ -1,0 +1,31 @@
+# Blueprint do Render — cria os serviços web e worker a partir deste repositório.
+# Pré-requisito: Environment Group "rma-secrets" criado no dashboard com as variáveis
+# listadas em .env.example (exceto SERVICE_ROLE, definida aqui por serviço).
+# O banco (rma-db) já existe e NÃO é gerenciado por este blueprint — a DATABASE_URL
+# (Internal URL) vai no Environment Group.
+
+services:
+  - type: web
+    name: rma-web
+    runtime: docker
+    region: ohio
+    plan: starter
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /healthz
+    autoDeploy: true
+    envVars:
+      - key: SERVICE_ROLE
+        value: web
+      - fromGroup: rma-secrets
+
+  - type: worker
+    name: rma-worker
+    runtime: docker
+    region: ohio
+    plan: starter
+    dockerfilePath: ./Dockerfile
+    autoDeploy: true
+    envVars:
+      - key: SERVICE_ROLE
+        value: worker
+      - fromGroup: rma-secrets
