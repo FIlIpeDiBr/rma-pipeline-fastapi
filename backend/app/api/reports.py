@@ -13,7 +13,7 @@ from .. import storage
 from ..auth.deps import current_org_id
 from ..config import get_settings
 from ..db import get_db
-from ..http_utils import content_disposition
+from ..http_utils import ArquivoGrandeDemais, content_disposition, ler_com_limite
 from ..models import REPORT_FILA, Company, Report, Template
 from ..reports.builder import eh_docx
 from ..reports.service import DOCX_MIME, get_or_create_template_padrao
@@ -86,12 +86,13 @@ async def subir_template(
     nome: Annotated[str, Form()],
     suporta_grupo: Annotated[bool, Form()] = False,
 ) -> dict:
-    data = await arquivo.read()
+    limite_mb = get_settings().max_upload_mb
+    try:
+        data = await ler_com_limite(arquivo, limite_mb * 1024 * 1024)
+    except ArquivoGrandeDemais as exc:
+        raise HTTPException(413, f"Template excede {limite_mb} MB.") from exc
     if not data:
         raise HTTPException(422, "Arquivo vazio.")
-    limite_mb = get_settings().max_upload_mb
-    if len(data) > limite_mb * 1024 * 1024:
-        raise HTTPException(413, f"Template excede {limite_mb} MB.")
     if not eh_docx(data):
         raise HTTPException(422, "O template precisa ser um arquivo .docx.")
     t = Template(org_id=org_id, nome=nome, suporta_grupo=suporta_grupo, storage_key="")

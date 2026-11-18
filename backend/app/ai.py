@@ -27,13 +27,26 @@ from .extraction.prompts import (
 MODELO_TRIAGEM = "claude-haiku-4-5-20251001"
 MODELO_PADRAO = "claude-sonnet-4-6"
 
-# Preço aproximado em USD por 1 milhão de tokens (entrada, saída).
-# Ajuste conforme a tabela vigente da Anthropic; usado só para estimar custo.
+# Preço em USD por 1 milhão de tokens (entrada, saída), usado só para estimar custo.
+# Preço muda sem aviso de deploy: a variável AI_PRECOS sobrepõe esta tabela.
 PRECOS: dict[str, tuple[float, float]] = {
     MODELO_TRIAGEM: (1.0, 5.0),
     MODELO_PADRAO: (3.0, 15.0),
 }
 _PRECO_PADRAO = (3.0, 15.0)
+
+
+def modelo_triagem() -> str:
+    return get_settings().ai_modelo_triagem or MODELO_TRIAGEM
+
+
+def modelo_padrao() -> str:
+    return get_settings().ai_modelo_padrao or MODELO_PADRAO
+
+
+def tabela_precos() -> dict[str, tuple[float, float]]:
+    """Tabela padrão com as sobreposições de AI_PRECOS por cima."""
+    return {**PRECOS, **get_settings().ai_precos}
 
 
 @dataclass
@@ -58,7 +71,8 @@ def get_client() -> anthropic.Anthropic:
 
 
 def _custo(modelo: str, entrada_tok: int, saida_tok: int) -> Decimal:
-    pin, pout = PRECOS.get(modelo, _PRECO_PADRAO)
+    """Custo estimado da chamada. Modelo fora da tabela usa o preço do modelo padrão."""
+    pin, pout = tabela_precos().get(modelo, _PRECO_PADRAO)
     valor = entrada_tok / 1_000_000 * pin + saida_tok / 1_000_000 * pout
     return Decimal(str(round(valor, 6)))
 
@@ -153,7 +167,7 @@ def triar(entrada: EntradaIA, nome_arquivo: str) -> AiResultado:
     """Triagem barata: empresa, período e tipo (RF-02/08)."""
     return _chamar(
         "triagem",
-        MODELO_TRIAGEM,
+        modelo_triagem(),
         SYSTEM_TRIAGEM,
         prompt_triagem(nome_arquivo),
         entrada,
@@ -165,7 +179,7 @@ def extrair(entrada: EntradaIA, tipo: str) -> AiResultado:
     """Extração estruturada por tipo (RF-10)."""
     instrucao = prompt_extracao_balanco() if tipo == "BALANCO" else prompt_extracao_dre()
     return _chamar(
-        "extracao", MODELO_PADRAO, SYSTEM_EXTRACAO, instrucao, entrada, max_tokens=32000
+        "extracao", modelo_padrao(), SYSTEM_EXTRACAO, instrucao, entrada, max_tokens=32000
     )
 
 
@@ -173,7 +187,7 @@ def derivar_dre_de_balanco(linhas_texto: str) -> AiResultado:
     """Deriva uma DRE a partir das contas de resultado de um balancete (RF-19)."""
     entrada = EntradaIA(modo="texto", texto=linhas_texto)
     return _chamar(
-        "extracao", MODELO_PADRAO, SYSTEM_EXTRACAO, prompt_dre_de_balanco(), entrada,
+        "extracao", modelo_padrao(), SYSTEM_EXTRACAO, prompt_dre_de_balanco(), entrada,
         max_tokens=4096,
     )
 
@@ -192,6 +206,6 @@ def gerar_analise(titulo: str, dados_texto: str) -> AiResultado:
         "Comente variações relevantes entre os períodos. Não use listas nem títulos."
     )
     return _chamar(
-        "texto", MODELO_PADRAO, SYSTEM_ANALISE, instrucao, entrada,
+        "texto", modelo_padrao(), SYSTEM_ANALISE, instrucao, entrada,
         max_tokens=600, parse_json=False,
     )

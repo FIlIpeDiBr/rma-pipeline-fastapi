@@ -35,6 +35,11 @@ class Settings(BaseSettings):
     database_url: str = "postgresql://postgres:postgres@localhost:5432/rma"
 
     anthropic_api_key: str = ""
+    # Modelos e preços de IA. Vazio = padrões de app/ai.py. AI_PRECOS é um JSON
+    # {"modelo": [USD por milhão de tokens de entrada, de saída]} que sobrepõe a tabela.
+    ai_modelo_triagem: str = ""
+    ai_modelo_padrao: str = ""
+    ai_precos: dict[str, tuple[float, float]] = {}
 
     storage_endpoint: str = ""
     storage_access_key: str = ""

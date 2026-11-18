@@ -3,6 +3,9 @@
 Passo 2 entregou orgs/users. O Passo 3 acrescenta o núcleo de ingestão:
 companies, documents, balance_lines, dre_lines, ai_calls e job_events.
 Indicadores e grupos chegam nos Passos 4-5.
+
+Os índices são declarados em `__table_args__` com os mesmos nomes e colunas das migrations,
+que são a fonte de verdade do banco. Um teste de integração compara os dois lados.
 """
 
 import datetime as dt
@@ -13,6 +16,7 @@ from sqlalchemy import (
     Boolean,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     Numeric,
     String,
@@ -52,6 +56,9 @@ class Org(Base):
 
 class User(Base):
     __tablename__ = "users"
+    __table_args__ = (
+        Index("ix_users_org", "org_id"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     org_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("orgs.id"))
@@ -66,12 +73,16 @@ class Company(Base):
     """Cliente do escritório. `nome_canonico` (sem acentos/espaços) é único por org."""
 
     __tablename__ = "companies"
-    __table_args__ = (UniqueConstraint("org_id", "nome_canonico", name="uq_company_org_canon"),)
+    __table_args__ = (
+        UniqueConstraint("org_id", "nome_canonico", name="uq_company_org_canon"),
+        Index("ix_companies_org", "org_id"),
+        Index("ix_companies_canon", "nome_canonico"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
-    org_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("orgs.id"), index=True)
+    org_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("orgs.id"))
     nome: Mapped[str] = mapped_column(String(300))
-    nome_canonico: Mapped[str] = mapped_column(String(300), index=True)
+    nome_canonico: Mapped[str] = mapped_column(String(300))
     cnpj: Mapped[str] = mapped_column(String(20), default="")
     email: Mapped[str] = mapped_column(String(320), default="")  # remetente conhecido (RF-47)
     grupo: Mapped[str] = mapped_column(String(200), default="")  # consolidação vem no Passo 4
@@ -86,18 +97,25 @@ class Document(Base):
     """
 
     __tablename__ = "documents"
+    __table_args__ = (
+        Index("ix_documents_org", "org_id"),
+        Index("ix_documents_company", "company_id"),
+        Index("ix_documents_status", "status"),
+        Index("ix_documents_sha256", "sha256"),
+        Index("ix_documents_chave", "org_id", "company_id", "mes", "ano", "tipo"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
-    org_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("orgs.id"), index=True)
+    org_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("orgs.id"))
     company_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("companies.id"), nullable=True, index=True
+        ForeignKey("companies.id"), nullable=True
     )
 
     nome_arquivo: Mapped[str] = mapped_column(String(500))
     content_type: Mapped[str] = mapped_column(String(120), default="")
     tamanho: Mapped[int] = mapped_column(Integer, default=0)
     storage_key: Mapped[str] = mapped_column(String(500))
-    sha256: Mapped[str] = mapped_column(String(64), default="", index=True)
+    sha256: Mapped[str] = mapped_column(String(64), default="")
     origem: Mapped[str] = mapped_column(String(20), default="UPLOAD")  # UPLOAD | EMAIL
     remetente: Mapped[str] = mapped_column(String(320), default="")  # email do remetente (EMAIL)
     enviado_por: Mapped[str] = mapped_column(String(320), default="")  # quem subiu (UPLOAD)
@@ -108,7 +126,7 @@ class Document(Base):
     mes: Mapped[int | None] = mapped_column(Integer, nullable=True)
     ano: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
-    status: Mapped[str] = mapped_column(String(20), default=STATUS_RECEBIDO, index=True)
+    status: Mapped[str] = mapped_column(String(20), default=STATUS_RECEBIDO)
     mensagem: Mapped[str] = mapped_column(Text, default="")
     aviso: Mapped[str] = mapped_column(Text, default="")  # observação não-fatal (abas ignoradas)
 
@@ -124,15 +142,19 @@ class BalanceLine(Base):
     """Linha de balancete (analítica ou sintética) vinculada ao documento."""
 
     __tablename__ = "balance_lines"
+    __table_args__ = (
+        Index("ix_balance_lines_document", "document_id"),
+        Index("ix_balance_lines_periodo", "org_id", "company_id", "mes", "ano"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     document_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("documents.id", ondelete="CASCADE"), index=True
+        ForeignKey("documents.id", ondelete="CASCADE")
     )
-    org_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("orgs.id"), index=True)
+    org_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("orgs.id"))
     company_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("companies.id"), nullable=True)
-    mes: Mapped[int | None] = mapped_column(Integer, index=True)
-    ano: Mapped[int | None] = mapped_column(Integer, index=True)
+    mes: Mapped[int | None] = mapped_column(Integer)
+    ano: Mapped[int | None] = mapped_column(Integer)
 
     ordem: Mapped[int] = mapped_column(Integer, default=0)
     conta: Mapped[str] = mapped_column(String(400), default="")
@@ -153,15 +175,19 @@ class DreLine(Base):
     """Linha de DRE por categoria sintética vinculada ao documento."""
 
     __tablename__ = "dre_lines"
+    __table_args__ = (
+        Index("ix_dre_lines_document", "document_id"),
+        Index("ix_dre_lines_periodo", "org_id", "company_id", "mes", "ano"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     document_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("documents.id", ondelete="CASCADE"), index=True
+        ForeignKey("documents.id", ondelete="CASCADE")
     )
-    org_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("orgs.id"), index=True)
+    org_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("orgs.id"))
     company_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("companies.id"), nullable=True)
-    mes: Mapped[int | None] = mapped_column(Integer, index=True)
-    ano: Mapped[int | None] = mapped_column(Integer, index=True)
+    mes: Mapped[int | None] = mapped_column(Integer)
+    ano: Mapped[int | None] = mapped_column(Integer)
 
     ordem: Mapped[int] = mapped_column(Integer, default=0)
     conta: Mapped[str] = mapped_column(String(120), default="")  # categoria sintética
@@ -181,13 +207,18 @@ class AiCall(Base):
     """Auditoria de toda chamada de IA (RF-14) com tokens e custo."""
 
     __tablename__ = "ai_calls"
+    __table_args__ = (
+        Index("ix_ai_calls_org", "org_id"),
+        Index("ix_ai_calls_document", "document_id"),
+        Index("ix_ai_calls_criado", "criado_em"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     org_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("orgs.id"), nullable=True, index=True
+        ForeignKey("orgs.id"), nullable=True
     )
     document_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("documents.id", ondelete="SET NULL"), nullable=True, index=True
+        ForeignKey("documents.id", ondelete="SET NULL"), nullable=True
     )
     tipo: Mapped[str] = mapped_column(String(30), default="")  # triagem | extracao | texto
     modelo: Mapped[str] = mapped_column(String(60), default="")
@@ -200,7 +231,7 @@ class AiCall(Base):
     prompt: Mapped[str] = mapped_column(Text, default="")
     resposta: Mapped[str] = mapped_column(Text, default="")
     criado_em: Mapped[dt.datetime] = mapped_column(
-        DateTime(timezone=True), default=_now, index=True
+        DateTime(timezone=True), default=_now
     )
 
 
@@ -208,20 +239,24 @@ class JobEvent(Base):
     """Evento de progresso do pipeline, consumido pelo SSE do portal (RF-49/50)."""
 
     __tablename__ = "job_events"
+    __table_args__ = (
+        Index("ix_job_events_document", "document_id"),
+        Index("ix_job_events_criado", "criado_em"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     org_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("orgs.id"), nullable=True, index=True
+        ForeignKey("orgs.id"), nullable=True
     )
     document_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("documents.id", ondelete="CASCADE"), nullable=True, index=True
+        ForeignKey("documents.id", ondelete="CASCADE"), nullable=True
     )
     etapa: Mapped[str] = mapped_column(String(60), default="")
     progresso: Mapped[int] = mapped_column(Integer, default=0)  # 0-100
     status: Mapped[str] = mapped_column(String(20), default="info")  # info | ok | erro
     mensagem: Mapped[str] = mapped_column(Text, default="")
     criado_em: Mapped[dt.datetime] = mapped_column(
-        DateTime(timezone=True), default=_now, index=True
+        DateTime(timezone=True), default=_now
     )
 
 
@@ -229,13 +264,17 @@ class IndicatorDefinition(Base):
     """Definição de indicador (RF-27b). org_id NULL = padrão do sistema (seed das 23)."""
 
     __tablename__ = "indicator_definitions"
-    __table_args__ = (UniqueConstraint("org_id", "key", name="uq_ind_def_org_key"),)
+    __table_args__ = (
+        UniqueConstraint("org_id", "key", name="uq_ind_def_org_key"),
+        Index("ix_ind_def_org", "org_id"),
+        Index("ix_ind_def_key", "key"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     org_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("orgs.id"), nullable=True, index=True
+        ForeignKey("orgs.id"), nullable=True
     )
-    key: Mapped[str] = mapped_column(String(60), index=True)
+    key: Mapped[str] = mapped_column(String(60))
     label: Mapped[str] = mapped_column(String(120))
     formula: Mapped[str] = mapped_column(Text, default="")
     formato: Mapped[str] = mapped_column(String(10), default="rs")  # rs | pct | indice
@@ -252,17 +291,21 @@ class IndicatorValue(Base):
         UniqueConstraint(
             "org_id", "company_id", "grupo", "mes", "ano", "key", name="uq_ind_val_entidade"
         ),
+        Index("ix_ind_val_org", "org_id"),
+        Index("ix_ind_val_company", "company_id"),
+        Index("ix_ind_val_periodo", "org_id", "mes", "ano"),
+        Index("ix_ind_val_key", "key"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
-    org_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("orgs.id"), index=True)
+    org_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("orgs.id"))
     company_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("companies.id", ondelete="CASCADE"), nullable=True, index=True
+        ForeignKey("companies.id", ondelete="CASCADE"), nullable=True
     )
     grupo: Mapped[str] = mapped_column(String(200), default="")  # consolidação (próximo passo)
-    mes: Mapped[int] = mapped_column(Integer, index=True)
-    ano: Mapped[int] = mapped_column(Integer, index=True)
-    key: Mapped[str] = mapped_column(String(60), index=True)
+    mes: Mapped[int] = mapped_column(Integer)
+    ano: Mapped[int] = mapped_column(Integer)
+    key: Mapped[str] = mapped_column(String(60))
     label: Mapped[str] = mapped_column(String(120), default="")
     formato: Mapped[str] = mapped_column(String(10), default="")
     valor: Mapped[Decimal | None] = mapped_column(Numeric(18, 4), nullable=True)
@@ -283,9 +326,12 @@ class Template(Base):
     """Modelo docx (docxtpl) cadastrado pela org. `suporta_grupo` filtra a seleção."""
 
     __tablename__ = "templates"
+    __table_args__ = (
+        Index("ix_templates_org", "org_id"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
-    org_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("orgs.id"), index=True)
+    org_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("orgs.id"))
     nome: Mapped[str] = mapped_column(String(200))
     descricao: Mapped[str] = mapped_column(String(500), default="")
     suporta_grupo: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -298,19 +344,24 @@ class Report(Base):
     """Relatório gerado de um template para uma entidade/período (fila + progresso — RF-38)."""
 
     __tablename__ = "reports"
+    __table_args__ = (
+        Index("ix_reports_org", "org_id"),
+        Index("ix_reports_company", "company_id"),
+        Index("ix_reports_status", "status"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
-    org_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("orgs.id"), index=True)
+    org_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("orgs.id"))
     template_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("templates.id"))
     company_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("companies.id", ondelete="SET NULL"), nullable=True, index=True
+        ForeignKey("companies.id", ondelete="SET NULL"), nullable=True
     )
     grupo: Mapped[str] = mapped_column(String(200), default="")
     mes: Mapped[int] = mapped_column(Integer)
     ano: Mapped[int] = mapped_column(Integer)
     anual: Mapped[bool] = mapped_column(Boolean, default=False)  # exercício (ano) em vez de mês
 
-    status: Mapped[str] = mapped_column(String(20), default=REPORT_FILA, index=True)
+    status: Mapped[str] = mapped_column(String(20), default=REPORT_FILA)
     progresso: Mapped[int] = mapped_column(Integer, default=0)
     etapa: Mapped[str] = mapped_column(String(60), default="")
     erro: Mapped[str] = mapped_column(Text, default="")
@@ -337,15 +388,20 @@ class EmailMessage(Base):
     """Email recebido na caixa rma@, aguardando revisão antes de importar."""
 
     __tablename__ = "email_messages"
+    __table_args__ = (
+        Index("ix_email_msg_org", "org_id"),
+        Index("ix_email_msg_status", "status"),
+        Index("ix_email_msg_mid", "message_id"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
-    org_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("orgs.id"), index=True)
-    message_id: Mapped[str] = mapped_column(String(800), index=True)  # id no Graph
+    org_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("orgs.id"))
+    message_id: Mapped[str] = mapped_column(String(800))  # id no Graph
     remetente: Mapped[str] = mapped_column(String(320), default="")
     assunto: Mapped[str] = mapped_column(String(500), default="")
     corpo: Mapped[str] = mapped_column(Text, default="")
     recebido_em: Mapped[str] = mapped_column(String(40), default="")
-    status: Mapped[str] = mapped_column(String(20), default=EMAIL_PENDENTE, index=True)
+    status: Mapped[str] = mapped_column(String(20), default=EMAIL_PENDENTE)
     criado_em: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
     anexos: Mapped[list["EmailAttachment"]] = relationship(
@@ -357,12 +413,15 @@ class EmailAttachment(Base):
     """Anexo de um email recebido (bytes no storage), selecionável para importação."""
 
     __tablename__ = "email_attachments"
+    __table_args__ = (
+        Index("ix_email_att_msg", "email_message_id"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     email_message_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("email_messages.id", ondelete="CASCADE"), index=True
+        ForeignKey("email_messages.id", ondelete="CASCADE")
     )
-    org_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("orgs.id"), index=True)
+    org_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("orgs.id"))
     nome: Mapped[str] = mapped_column(String(500))
     content_type: Mapped[str] = mapped_column(String(120), default="")
     tamanho: Mapped[int] = mapped_column(Integer, default=0)

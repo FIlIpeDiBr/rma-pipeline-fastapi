@@ -62,8 +62,12 @@ def registrar_ai_call(resultado: AiResultado, org_id, document_id) -> None:
 
 
 def emitir_evento(org_id, document_id, etapa, progresso, status="info", mensagem="") -> None:
-    """Append-only de progresso para o SSE (transação curta independente)."""
+    """Append-only de progresso para o SSE (transação curta independente).
+
+    O NOTIFY sai na mesma transação: o stream só é avisado depois que a linha existe.
+    """
     from ..db import SessionLocal
+    from ..eventos import notificar
 
     db = SessionLocal()
     try:
@@ -77,6 +81,8 @@ def emitir_evento(org_id, document_id, etapa, progresso, status="info", mensagem
                 mensagem=mensagem[:2000],
             )
         )
+        db.flush()
+        notificar(db, org_id)
         db.commit()
     finally:
         db.close()

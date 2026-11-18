@@ -22,14 +22,19 @@ log = structlog.get_logger()
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    from .jobs import job_app
+    from .eventos import barramento
+    from .jobs import _conninfo, job_app
 
     try:
         await job_app.open_async()
         log.info("fila_conectada")
     except Exception as exc:  # noqa: BLE001 - app sobe mesmo sem fila (healthz reporta)
         log.warning("fila_indisponivel", erro=str(exc))
+    # Um LISTEN por processo para o progresso em tempo real; sem ele o SSE consulta o banco.
+    if _conninfo().startswith("postgresql"):
+        await barramento.iniciar(_conninfo())
     yield
+    await barramento.parar()
     try:
         await job_app.close_async()
     except Exception:  # noqa: BLE001

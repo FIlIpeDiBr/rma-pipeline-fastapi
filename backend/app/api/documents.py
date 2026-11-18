@@ -14,7 +14,7 @@ from .. import storage
 from ..auth.deps import current_org_id, current_user
 from ..config import get_settings
 from ..db import get_db
-from ..http_utils import content_disposition
+from ..http_utils import ArquivoGrandeDemais, content_disposition, ler_com_limite
 from ..models import (
     STATUS_RECEBIDO,
     BalanceLine,
@@ -74,14 +74,15 @@ async def upload(
     limite = get_settings().max_upload_mb * 1024 * 1024
     criados = []
     for up in arquivos:
-        data = await up.read()
-        if not data:
-            criados.append({"nome_arquivo": up.filename, "erro": "arquivo vazio"})
-            continue
-        if len(data) > limite:
+        try:
+            data = await ler_com_limite(up, limite)
+        except ArquivoGrandeDemais:
             criados.append(
                 {"nome_arquivo": up.filename, "erro": f"excede {get_settings().max_upload_mb} MB"}
             )
+            continue
+        if not data:
+            criados.append({"nome_arquivo": up.filename, "erro": "arquivo vazio"})
             continue
 
         doc = Document(

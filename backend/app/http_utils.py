@@ -1,4 +1,4 @@
-"""Utilitários de resposta HTTP."""
+"""Utilitários de requisição e resposta HTTP."""
 
 import re
 import unicodedata
@@ -17,3 +17,27 @@ def content_disposition(nome_arquivo: str) -> str:
     ascii_ = unicodedata.normalize("NFKD", limpo).encode("ascii", "ignore").decode("ascii")
     ascii_ = ascii_.strip(" .") or "arquivo"
     return f"attachment; filename=\"{ascii_}\"; filename*=UTF-8''{quote(limpo, safe='')}"
+
+
+class ArquivoGrandeDemais(Exception):
+    """O upload passou do limite configurado."""
+
+
+async def ler_com_limite(arquivo, limite_bytes: int, bloco: int = 1024 * 1024) -> bytes:
+    """Lê um upload em blocos e para assim que ele passa do limite.
+
+    `await arquivo.read()` traria o arquivo inteiro para a memória antes de qualquer
+    checagem: um envio de 2 GB ocuparia 2 GB para só então ser recusado. Aqui a leitura
+    para no primeiro bloco além do limite.
+    """
+    partes: list[bytes] = []
+    total = 0
+    while True:
+        pedaco = await arquivo.read(bloco)
+        if not pedaco:
+            break
+        total += len(pedaco)
+        if total > limite_bytes:
+            raise ArquivoGrandeDemais(f"arquivo excede {limite_bytes} bytes")
+        partes.append(pedaco)
+    return b"".join(partes)

@@ -52,3 +52,8 @@ select = ["E", "F", "I", "UP", "B"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# Os testes de integração apagam dados e exigem Postgres: só rodam com `-m integracao`.
+addopts = "-m 'not integracao'"
+markers = [
+    "integracao: API sobre Postgres real (requer RMA_TESTE_INTEGRACAO=1 e banco *_teste)",
+]
