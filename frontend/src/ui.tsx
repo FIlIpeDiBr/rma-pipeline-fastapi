@@ -2,7 +2,7 @@
 import { useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 
-import { MESES } from "./api";
+import { chavePeriodo, type Periodo, rotuloPeriodo } from "./formato";
 
 export const fonteSerif = "'Source Serif 4', Georgia, serif";
 
@@ -110,15 +110,6 @@ export function PeriodoSeletor({
   );
 }
 
-export type Periodo = { mes: number; ano: number };
-
-export function chavePeriodo(p: Periodo): string {
-  return `${p.ano}-${String(p.mes).padStart(2, "0")}`;
-}
-export function rotuloPeriodo(p: Periodo): string {
-  return `${MESES[p.mes] || p.mes}/${p.ano}`;
-}
-
 export function SeletorPeriodos({
   periodos, valor, onChange, vazio = "— sem períodos —",
 }: {
@@ -143,36 +134,6 @@ export function SeletorPeriodos({
       ))}
     </select>
   );
-}
-
-function _norm(s: string): string {
-  return (s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
-}
-
-export function pontuarBusca(texto: string, query: string): number {
-  const t = _norm(texto);
-  const q = _norm(query).trim();
-  if (!q) return 1;
-  if (t === q) return 1000;
-  if (t.startsWith(q)) return 600 - t.length;
-  const idx = t.indexOf(q);
-  if (idx >= 0) return 300 - idx;
-  let i = 0;
-  for (const c of t) {
-    if (c === q[i]) i += 1;
-    if (i === q.length) break;
-  }
-  return i === q.length ? 60 - t.length : 0;
-}
-
-export function ordenarBestMatch<T>(itens: T[], query: string, chave: (x: T) => string): T[] {
-  const alfa = (a: T, b: T) => chave(a).localeCompare(chave(b), "pt-BR");
-  if (!query.trim()) return [...itens].sort(alfa);
-  const scored = itens.map((x) => ({ x, s: pontuarBusca(chave(x), query) }));
-  const match = scored.filter((o) => o.s > 0)
-    .sort((a, b) => b.s - a.s || alfa(a.x, b.x)).map((o) => o.x);
-  const resto = scored.filter((o) => o.s === 0).map((o) => o.x).sort(alfa);
-  return [...match, ...resto];
 }
 
 export type OpcaoOrd = { valor: string; rotulo: string; digitar?: boolean };

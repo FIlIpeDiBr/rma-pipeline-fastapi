@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 
 import { api } from "./api";
+import { ordenarBestMatch } from "./formato";
 import {
-  Aviso, btn, btnPrim, Card, cores, input, type OpcaoOrd, ordenarBestMatch, ThOrdenavel,
+  Aviso, btn, btnPrim, Card, cores, input, type OpcaoOrd, ThOrdenavel,
 } from "./ui";
 
 type Emp = { id: string; nome: string; cnpj: string; grupo: string };

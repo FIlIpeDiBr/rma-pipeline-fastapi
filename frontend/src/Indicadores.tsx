@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { api } from "./api";
+import type { Periodo } from "./formato";
 import {
-  Aviso, btn, btnPrim, Card, cores, GraficoBarras, input, type Periodo, SeletorPeriodos,
+  Aviso, btn, Card, cores, GraficoBarras, input, SeletorPeriodos,
 } from "./ui";
 
 type Emp = { id: string; nome: string; grupo: string };

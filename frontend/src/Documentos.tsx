@@ -1,8 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { api, MESES } from "./api";
+import { api } from "./api";
 import {
-  Badge, btn, btnPrim, cores, fonteSerif, Modal, type OpcaoOrd, ordenarBestMatch,
+  emAndamento, fmtBytes, fmtDataHora, MESES, ordenarBestMatch, periodoCurto,
+} from "./formato";
+import {
+  Badge, btn, btnPrim, cores, fonteSerif, Modal, type OpcaoOrd,
   tabelaWrap, ThOrdenavel, thPlain,
 } from "./ui";
 
@@ -40,29 +43,6 @@ const TIPO_STATUS: Record<string, BadgeTipo> = {
   RECEBIDO: "neutro", TRIANDO: "info", EXTRAINDO: "info",
   PROCESSADO: "ok", ERRO: "erro",
 };
-
-function periodo(d: { mes: number | null; ano: number | null }): string {
-  if (!d.mes || !d.ano) return "—";
-  return `${String(d.mes).padStart(2, "0")}/${d.ano}`;
-}
-function emAndamento(status: string): boolean {
-  return status === "RECEBIDO" || status === "TRIANDO" || status === "EXTRAINDO";
-}
-function fmtData(iso?: string | null): string {
-  if (!iso) return "—";
-  const d = new Date(iso);
-  return d.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
-}
-function fmtData2(iso?: string | null): string {
-  if (!iso) return "—";
-  return new Date(iso).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" });
-}
-function fmtBytes(n: number): string {
-  if (!n) return "—";
-  if (n < 1024) return `${n} B`;
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
-  return `${(n / 1024 / 1024).toFixed(1)} MB`;
-}
 
 const OPC: Record<string, OpcaoOrd[]> = {
   submetido: [{ valor: "recente", rotulo: "mais recente" }, { valor: "antigo", rotulo: "mais antigo" }],
@@ -297,12 +277,12 @@ export default function Documentos() {
               return (
                 <tr key={d.id} style={{ borderBottom: `1px solid ${cores.suave}`, verticalAlign: "top" }}>
                   <td style={{ padding: "11px 16px", whiteSpace: "nowrap", color: cores.cinza }}>
-                    {fmtData(d.criado_em)}
+                    {fmtDataHora(d.criado_em)}
                   </td>
                   <td style={{ padding: "11px 16px", maxWidth: 220, wordBreak: "break-word", color: cores.heading, fontWeight: 500 }}>{d.nome_arquivo}</td>
                   <td style={{ padding: "11px 16px", color: cores.texto }}>{d.empresa || "—"}</td>
                   <td style={{ padding: "11px 16px", color: cores.texto }}>{d.tipo || "—"}</td>
-                  <td style={{ padding: "11px 16px", color: cores.texto }}>{periodo(d)}</td>
+                  <td style={{ padding: "11px 16px", color: cores.texto }}>{periodoCurto(d)}</td>
                   <td style={{ padding: "11px 16px", minWidth: 150 }}>
                     <Badge tipo={TIPO_STATUS[d.status] || "neutro"}>{d.status}</Badge>
                     {mostrarBarra && (
@@ -338,8 +318,8 @@ export default function Documentos() {
             <Linha rotulo="Período" valor={detalhe.mes && detalhe.ano ? `${MESES[detalhe.mes]}/${detalhe.ano}` : "—"} />
             <Linha rotulo="Status" valor={detalhe.status} cor={CORES[detalhe.status]} />
             <Linha rotulo="Tamanho" valor={fmtBytes(detalhe.tamanho)} />
-            <Linha rotulo="Submetido em" valor={fmtData(detalhe.criado_em)} />
-            <Linha rotulo="Atualizado em" valor={fmtData(detalhe.atualizado_em)} />
+            <Linha rotulo="Submetido em" valor={fmtDataHora(detalhe.criado_em)} />
+            <Linha rotulo="Atualizado em" valor={fmtDataHora(detalhe.atualizado_em)} />
           </dl>
 
           {detalhe.aviso && (

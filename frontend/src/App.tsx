@@ -4,6 +4,7 @@ import Definicoes from "./Definicoes";
 import Documentos from "./Documentos";
 import Email from "./Email";
 import Empresas from "./Empresas";
+import { iniciais } from "./formato";
 import Indicadores from "./Indicadores";
 import Relatorios from "./Relatorios";
 import { cores, fonteSerif } from "./ui";
@@ -26,13 +27,6 @@ const ABAS = [
   { id: "email", rotulo: "Email", comp: Email,
     d: "M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z", d2: "m2 7 10 6 10-6" },
 ] as const;
-
-function iniciais(nome: string, email: string): string {
-  const base = (nome || email || "?").trim();
-  const partes = base.split(/\s+/).filter(Boolean);
-  if (partes.length === 1) return partes[0].slice(0, 2).toUpperCase();
-  return (partes[0][0] + partes[partes.length - 1][0]).toUpperCase();
-}
 
 export default function App() {
   const [health, setHealth] = useState<Health | null>(null);

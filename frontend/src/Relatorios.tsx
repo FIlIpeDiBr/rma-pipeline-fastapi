@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { api } from "./api";
+import { fmtDataHora, grupoStatus, ordenarBestMatch, type Periodo } from "./formato";
 import {
-  Aviso, btn, btnPrim, Card, cores, input, type OpcaoOrd, ordenarBestMatch,
-  type Periodo, SeletorPeriodos, ThOrdenavel,
+  Aviso, btn, btnPrim, Card, cores, input, type OpcaoOrd,
+  SeletorPeriodos, ThOrdenavel,
 } from "./ui";
 
 type Tpl = { id: string; nome: string; suporta_grupo: boolean };
@@ -32,15 +33,7 @@ const OPC: Record<string, OpcaoOrd[]> = {
   ],
 };
 
-const grupoStatus = (s: string) => (s === "CONCLUIDO" ? "concluido" : s === "ERRO" ? "erro" : "andamento");
 const entidadeDe = (r: { entidade?: string; grupo: string | null }) => r.entidade || r.grupo || "";
-
-function fmtData(iso?: string | null): string {
-  if (!iso) return "—";
-  return new Date(iso).toLocaleString("pt-BR", {
-    day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit",
-  });
-}
 
 export default function Relatorios() {
   const [tpls, setTpls] = useState<Tpl[]>([]);
@@ -236,7 +229,7 @@ export default function Relatorios() {
               {lista.map((r) => (
                 <tr key={r.id} style={{ borderBottom: `1px solid ${cores.suave}` }}>
                   <td style={{ padding: "6px 4px", whiteSpace: "nowrap", color: cores.cinza }}>
-                    {fmtData(r.criado_em)}
+                    {fmtDataHora(r.criado_em)}
                   </td>
                   <td>{r.entidade || r.grupo || "—"}</td>
                   <td style={{ whiteSpace: "nowrap" }}>

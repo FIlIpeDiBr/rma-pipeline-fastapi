@@ -1,4 +1,6 @@
 // Helpers de chamada à API (mesma origem; envia o cookie de sessão do login).
+import { qs } from "./formato";
+
 async function handle(r: Response) {
   if (!r.ok) {
     let msg = `Erro ${r.status}`;
@@ -12,16 +14,6 @@ async function handle(r: Response) {
   }
   const ct = r.headers.get("content-type") || "";
   return ct.includes("application/json") ? r.json() : r.text();
-}
-
-function qs(params?: Record<string, unknown>): string {
-  if (!params) return "";
-  const p = new URLSearchParams();
-  for (const [k, v] of Object.entries(params)) {
-    if (v !== undefined && v !== null && v !== "") p.set(k, String(v));
-  }
-  const s = p.toString();
-  return s ? `?${s}` : "";
 }
 
 export const api = {
@@ -45,8 +37,3 @@ export const api = {
   postForm: (path: string, form: FormData) =>
     fetch(`/api${path}`, { method: "POST", body: form }).then(handle),
 };
-
-export const MESES = [
-  "", "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
-  "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro",
-];

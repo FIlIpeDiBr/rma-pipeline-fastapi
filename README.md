@@ -44,13 +44,13 @@ Uma única imagem Docker serve os dois papéis: a variável `SERVICE_ROLE` decid
 5. **Cálculo.** Análise vertical e horizontal, e 23 indicadores definidos por fórmula. Empresas de um mesmo grupo são consolidadas.
 6. **Relatório.** Um job monta o `.docx` a partir de um modelo, com tabelas, gráficos e parágrafos de análise escritos pelo modelo de linguagem.
 
-O portal acompanha cada etapa em tempo real por SSE.
+O portal acompanha cada etapa do processamento em tempo real por SSE.
 
 ## Decisões de engenharia
 
 **Jobs idempotentes e retomáveis.** Processar o mesmo documento duas vezes substitui os dados, não duplica. Documentos com a mesma chave de negócio (empresa, mês, ano e tipo) são deduplicados, e o mais recente vence. Uma falha marca o documento com erro e mensagem acionável, e o job é reexecutado.
 
-**Custo de IA auditável.** Cada chamada ao modelo grava modelo, tokens, custo estimado, duração, prompt e resposta na tabela `ai_calls`. A triagem usa um modelo mais barato que a extração.
+**Custo de IA auditável.** Cada chamada ao modelo grava modelo, tokens, custo estimado, duração, prompt e resposta na tabela `ai_calls`. A triagem usa um modelo mais barato que a extração. Modelos e tabela de preços são configuráveis por variável de ambiente.
 
 **Indicadores como dados.** As 23 definições ficam em tabela, e cada organização pode sobrepor uma fórmula sem mexer no código. As fórmulas passam por um avaliador próprio, sem `eval`, que só entende aritmética e os valores do período.
 
@@ -60,7 +60,11 @@ O portal acompanha cada etapa em tempo real por SSE.
 
 **Modelos de relatório em ambiente restrito.** Um modelo `.docx` é código Jinja. Os modelos enviados pelo portal são renderizados em um ambiente que bloqueia o acesso aos internos do Python e escapa os valores, de modo que quem sobe um modelo não executa código no worker.
 
-**Falhar cedo na configuração.** Em produção, a aplicação não sobe com a chave de sessão padrão. A conexão com o banco tem tempo limite, para o health check responder mesmo quando o banco não responde.
+**Falhar cedo.** Em produção, a aplicação não sobe com a chave de sessão padrão. A conexão com o banco tem tempo limite, para o health check responder mesmo quando o banco não responde. O upload é lido em blocos e recusado assim que passa do limite, sem carregar o arquivo inteiro na memória.
+
+**Progresso por aviso, não por consulta.** Cada evento de progresso emite um `NOTIFY` na mesma transação em que é gravado. A API mantém uma conexão em `LISTEN` por processo e acorda só as conexões SSE da organização avisada. O aviso não carrega dados: a tabela de eventos continua sendo a fonte, e perder um aviso custa um atraso, não um evento. Se o `LISTEN` cai, o stream volta a consultar o banco em intervalo curto até a conexão voltar.
+
+**Migrations como fonte do esquema.** Um teste de integração compara o que os modelos do ORM declaram com o que as migrations criam em um Postgres vazio (tabelas, colunas, tipos, chaves e índices) e falha se os dois lados divergirem. Ao ser escrito, ele encontrou índices declarados de um jeito nos modelos e criados de outro nas migrations; os modelos foram alinhados.
 
 ## Rodando localmente
 
@@ -93,14 +97,28 @@ As variáveis estão em [`.env.example`](.env.example). Sem `ANTHROPIC_API_KEY` 
 ## Testes
 
 ```bash
+# Backend: lint e testes de unidade (sem banco, sem rede, sem chave de API)
 cd backend
 ruff check .
 pytest
+
+# Backend: testes de integração, no Postgres do docker compose
+docker compose exec db createdb -U postgres rma_teste
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/rma_teste \
+  RMA_TESTE_INTEGRACAO=1 pytest -m integracao
+
+# Frontend
+cd ../frontend
+npm run lint && npm run typecheck && npm test
 ```
 
-Os 49 testes rodam sem banco, sem rede e sem chave de API: usam SQLite em memória e dublês para storage, e-mail e IA. Cobrem a normalização de categorias, o reparo de JSON, a persistência e a deduplicação, o motor de indicadores, a consolidação de grupos, a montagem do relatório e as regras de segurança.
+**Unidade (68 testes).** SQLite em memória e dublês para storage, e-mail e IA. Cobrem a normalização de categorias, o reparo de JSON, a persistência e a deduplicação, o motor de indicadores, a consolidação de grupos, a montagem do relatório, as regras de segurança, a leitura do upload com limite e o barramento de eventos do progresso em tempo real.
 
-O CI roda lint, testes, o build do frontend e o build da imagem Docker.
+**Integração (12 testes).** A API sobre um Postgres de verdade, com o esquema criado pelas migrations e pela fila do Procrastinate, como em produção. Cobrem as migrations até a última revisão, a comparação entre modelos e migrations, o caminho upload → job na fila → pipeline → indicadores, a DRE real substituindo a derivada do balancete, a deduplicação no reenvio, a exclusão em cascata pelas chaves estrangeiras, o relatório do pedido ao download, o isolamento entre organizações e o `NOTIFY` acordando o stream. Só rodam quando pedidos e contra um banco cujo nome termine em `_teste`, porque esvaziam as tabelas a cada teste.
+
+**Frontend (23 testes).** Vitest sobre as funções puras de formatação, busca e ordenação. ESLint (regras recomendadas, TypeScript e hooks) e `tsc` completam a checagem.
+
+O CI roda tudo isso a cada push, em quatro jobs: backend, integração (com um Postgres 16 de serviço), frontend e build da imagem Docker.
 
 ## Deploy
 
@@ -108,12 +126,12 @@ O [`render.yaml`](render.yaml) descreve os dois serviços (web e worker) a parti
 
 ## Limitações conhecidas
 
-- O frontend não tem testes nem lint, e os componentes maiores concentram estado e chamadas de API.
-- O progresso em tempo real consulta o banco a cada 1,5 s por conexão. `LISTEN/NOTIFY` do Postgres evitaria a consulta periódica.
-- O upload lê o arquivo inteiro na memória antes de checar o limite de tamanho.
-- Na prática há uma organização só: ela é criada pelo nome configurado no primeiro login.
-- Os testes de API cobrem autenticação e saúde. Os fluxos completos, com banco real, não têm teste automatizado.
-- O custo de IA é estimado com uma tabela de preços fixa no código.
+- Na prática há uma organização só, criada pelo nome configurado no primeiro login. O isolamento por `org_id` existe e é testado, mas não há cadastro nem administração de organizações.
+- Os testes de integração não sobem o worker nem chamam a IA: o job enfileirado é conferido na tabela da fila e executado em linha, e a IA e o storage são dublês. A qualidade da extração depende do modelo e não é medida por teste automatizado.
+- Os componentes React não têm teste; só as funções puras têm. Os componentes maiores concentram estado e chamadas de API.
+- O `LISTEN/NOTIFY` cobre o progresso dos documentos. A tela de relatórios ainda consulta a lista a cada 4 s enquanto está aberta.
+- O custo de IA registrado é uma estimativa a partir de uma tabela de preços configurável, não o valor faturado.
+- As dependências do frontend estão nas versões da época do projeto (React 18, Vite 5).
 
 ## Autor
 

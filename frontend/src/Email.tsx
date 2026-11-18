@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { api } from "./api";
-import { Aviso, btn, btnPrim, Card, cores, input } from "./ui";
+import { fmtBytes, fmtDataHora } from "./formato";
+import { Aviso, btn, btnPrim, Card, cores } from "./ui";
 
 type St = { configurado: boolean; caixa: string | null; auto: boolean; pendentes: number };
 type Anexo = {
@@ -14,17 +15,6 @@ type Msg = {
 };
 
 const LIMITE_CORPO = 280;
-
-function kb(n: number): string {
-  return n < 1024 ? `${n} B` : `${(n / 1024).toFixed(0)} KB`;
-}
-function fmtData(iso: string): string {
-  if (!iso) return "";
-  const d = new Date(iso);
-  return isNaN(d.getTime()) ? iso : d.toLocaleString("pt-BR", {
-    day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit",
-  });
-}
 
 export default function Email() {
   const [st, setSt] = useState<St | null>(null);
@@ -157,7 +147,7 @@ export default function Email() {
             <Card key={m.id} titulo={m.assunto || "(sem assunto)"}>
               <div style={{ fontSize: 13, color: cores.cinza, marginBottom: 6 }}>
                 De <strong style={{ color: cores.texto }}>{m.remetente || "—"}</strong>
-                {m.recebido_em && <> · {fmtData(m.recebido_em)}</>}
+                {m.recebido_em && <> · {fmtDataHora(m.recebido_em)}</>}
               </div>
               {m.corpo && (
                 <p style={{ whiteSpace: "pre-wrap", margin: "0 0 8px", color: cores.texto }}>
@@ -187,7 +177,7 @@ export default function Email() {
                     <input type="checkbox" disabled={!a.suportado}
                            checked={sel[m.id]?.has(a.id) ?? false}
                            onChange={() => toggleAnexo(m.id, a.id)} />
-                    {a.nome} <span style={{ color: cores.cinza, fontSize: 12 }}>({kb(a.tamanho)})</span>
+                    {a.nome} <span style={{ color: cores.cinza, fontSize: 12 }}>({fmtBytes(a.tamanho)})</span>
                     {!a.suportado && <span style={{ fontSize: 12 }}>— formato não suportado</span>}
                   </label>
                 ))}
